@@ -28,7 +28,7 @@ findMyWay.on('GET', '/:id', () => 'true')
       findMyWay.lookup(opt, null)
     })
     .add('fast-router', function () {
-      const a = r(PATH, METHOD)
+      const a = r(METHOD, PATH)
       a.data(a.params)
     })
     .on('cycle', function (event) {
@@ -52,7 +52,7 @@ findMyWay.on('GET', '/:id', () => 'true')
       findMyWay.lookup(opt, null)
     })
     .add('fast-router', function () {
-      const a = r(PATH, METHOD)
+      const a = r(METHOD, PATH)
       a.data(a.params)
     })
     .on('cycle', function (event) {
