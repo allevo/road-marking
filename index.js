@@ -67,6 +67,10 @@ Router.prototype.compile = function ({ debug } = {}) {
       if (tree.params.regex) {
         gen(`}`)
       }
+      // delete params.%s should fit better from feature point of view
+      // but the performance?
+      gen('params.%s = undefined', tree.params.name)
+      gen('depth = d%d', depth)
     }
 
     if (tree.wildcard) {
