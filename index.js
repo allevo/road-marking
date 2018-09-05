@@ -56,11 +56,7 @@ Router.prototype.compile = function ({ debug } = {}) {
       gen(`var d%d = depth`, depth)
       gen(`var c%d = path.charCodeAt(++depth)`, depth)
       if (debug) gen('//', tree.params.name)
-      if (tree.params.endToken) {
-        gen(`while(c%d !== %d && depth < len) {`, depth, '/'.charCodeAt(0))
-      } else {
-        gen(`while(c%d !== %d && c%d !== %d && depth < len) {`, depth, '/'.charCodeAt(0), depth, '-'.charCodeAt(0))
-      }
+      gen(`while(c%d !== %d && c%d !== %d && depth < len) {`, depth, '/'.charCodeAt(0), depth, (tree.params.endToken || '/').charCodeAt(0))
       gen('c%d = path.charCodeAt(++depth)', depth)
       gen('}')
       gen('params.%s = fastDecode(path.slice(d%d, depth))', tree.params.name, depth)
@@ -128,7 +124,7 @@ Router.prototype.compile = function ({ debug } = {}) {
             }
             let name = path.slice(currentJ + 1, j)
             let regex = null
-            let endToken = path[j] === '/' || j === path.length
+            let endToken = j === path.length ? null : path[j]
             if (path[j] === '(') {
               const startRegex = j
               j++
@@ -141,7 +137,7 @@ Router.prototype.compile = function ({ debug } = {}) {
               if (bracketCount !== 0) throw new Error('Invalid regex')
               name = path.slice(currentJ + 1, startRegex)
               regex = new RegExp(path.slice(startRegex, j))
-              endToken = path[j] === '/' || j === path.length
+              endToken = j === path.length ? null : path[j]
             }
             if (!root.params) {
               root.params = {

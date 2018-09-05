@@ -132,6 +132,32 @@ methods.forEach(method => {
       t.end()
     })
 
+    t.test('find-my-way tests', t => {
+      const router = rm({ notFound })
+
+      router.add(method, '/', 1)
+      router.add(method, '/user/:id', 2)
+      router.add(method, '/user/:id/static', 3)
+      router.add(method, '/customer/:name-:surname', 4)
+      router.add(method, '/at/:hour(^\\d+)h:minute(^\\d+)m', 5)
+      router.add(method, '/abc/def/ghi/lmn/opq/rst/uvz', 6)
+
+      const r = router.compile()
+
+      // findMyWay.lookup({ method: 'GET', url: '/', headers: {} }, null)
+      t.strictSame(r(method, '/'), { data: 1, params: {} })
+      // findMyWay.lookup({ method: 'GET', url: '/user/tomas', headers: {} }, null)
+      t.strictSame(r(method, '/user/tomas'), { data: 2, params: { id: 'tomas' } })
+      // findMyWay.lookup({ method: 'GET', url: '/customer/john-doe', headers: {} }, null)
+      t.strictSame(r(method, '/customer/john-doe'), { data: 4, params: { name: 'john', surname: 'doe' } })
+      // findMyWay.lookup({ method: 'GET', url: '/at/12h00m', headers: {} }, null)
+      t.strictSame(r(method, '/at/12h00m'), { data: 5, params: { hour: '12', minute: '00' } })
+      // findMyWay.lookup({ method: 'GET', url: '/abc/def/ghi/lmn/opq/rst/uvz', headers: {} }, null)
+      t.strictSame(r(method, '/abc/def/ghi/lmn/opq/rst/uvz'), { data: 6, params: {} })
+
+      t.end()
+    })
+
     t.end()
   })
 })
