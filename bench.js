@@ -1,20 +1,87 @@
 'use strict'
 
-var Benchmark = require('benchmark')
-
-const fr = require('.')({ notFound: () => 'false' })
-fr.add('GET', '/', () => 'true')
-fr.add('GET', '/a', () => 'true')
-fr.add('GET', '/b', () => 'true')
-fr.add('GET', '/:id', () => 'true')
-const r = fr.compile()
-
+const t = require('tap')
+const Benchmark = require('benchmark')
 const FindMyWay = require('find-my-way')
-const findMyWay = new FindMyWay()
-findMyWay.on('GET', '/', () => 'true')
-findMyWay.on('GET', '/a', () => 'true')
-findMyWay.on('GET', '/b', () => 'true')
-findMyWay.on('GET', '/:id', () => 'true')
+const rm = require('.')
+
+t.test('static', t => {
+  return t.test('should behave the same way of find-my-way', t => {
+    t.plan(4 * 2)
+
+    const _req = { url: '/', method: 'GET', headers: {} }
+    const _res = {}
+    const _store = {}
+    function handler (req, res, params, store) {
+      t.equal(req, _req)
+      t.equal(res, _res)
+      t.strictSame(params, {})
+      t.equal(store, _store)
+    }
+    const findMyWay = new FindMyWay()
+
+    findMyWay.on('GET', '/', handler, _store)
+    findMyWay.on('GET', '/a', handler, _store)
+    findMyWay.on('GET', '/b', handler, _store)
+
+    findMyWay.lookup(_req, _res)
+
+    const router = rm({ notFound: 'gg' })
+
+    router.add('GET', '/', { func: handler, store: _store })
+    router.add('GET', '/a', { func: handler, store: _store })
+    router.add('GET', '/b', { func: handler, store: _store })
+
+    const r = router.compile()
+
+    const d = r(_req.method, _req.url)
+    d.data.func(_req, _res, d.params, d.data.store)
+  })
+    .then(() => {
+      t.test('bench', t => {
+        const suite = new Benchmark.Suite()
+
+        const method = 'GET'
+        const path = '/'
+
+        const findMyWay = new FindMyWay()
+        const _req = { url: path, method: method, headers: {} }
+        const _res = {}
+        const _store = {}
+        function handler (req, res, params, store) { }
+        findMyWay.on('GET', '/', handler, _store)
+        findMyWay.on('GET', '/a', handler, _store)
+        findMyWay.on('GET', '/b', handler, _store)
+
+        const router = rm({ notFound: 'gg' })
+
+        router.add('GET', '/', { func: handler, store: _store })
+        router.add('GET', '/a', { func: handler, store: _store })
+        router.add('GET', '/b', { func: handler, store: _store })
+
+        const r = router.compile()
+
+        suite
+          .add('findMyWay', function () {
+            findMyWay.lookup(_req, _res)
+          })
+          .add('fast-router', function () {
+            const d = r(_req.method, _req.url)
+            d.data.func(_req, _res, d.params, d.data.store)
+          })
+          .on('cycle', function (event) {
+            console.log(String(event.target))
+          })
+          .on('complete', function () {
+            console.log('Fastest is ' + this.filter('fastest').map('name'))
+
+            t.end()
+          })
+          .run({ 'async': true })
+      })
+    })
+})
+
 /*
 {
   const suite = new Benchmark.Suite('static')
@@ -39,7 +106,7 @@ findMyWay.on('GET', '/:id', () => 'true')
     })
     .run({ 'async': true })
 }
-*/
+
 {
   const suite = new Benchmark.Suite('params')
 
@@ -63,3 +130,4 @@ findMyWay.on('GET', '/:id', () => 'true')
     })
     .run({ 'async': true })
 }
+*/
