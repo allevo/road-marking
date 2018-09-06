@@ -6,10 +6,11 @@ const FindMyWay = require('find-my-way')
 const rm = require('.')
 
 t.test('static', t => {
-  return t.test('should behave the same way of find-my-way', t => {
-    t.plan(4 * 2)
+  return t.test('should behave as find-my-way', t => {
+    t.plan(6 * 2)
 
     const _req = { url: '/', method: 'GET', headers: {} }
+    const _reqNotFound = { url: '/unknown', method: 'GET', headers: {} }
     const _res = {}
     const _store = {}
     function handler (req, res, params, store) {
@@ -18,15 +19,17 @@ t.test('static', t => {
       t.strictSame(params, {})
       t.equal(store, _store)
     }
-    const findMyWay = new FindMyWay()
+    function notFoundHandler (req, res) {
+      t.equal(req, _reqNotFound)
+      t.equal(res, _res)
+    }
+    const findMyWay = new FindMyWay({ defaultRoute: notFoundHandler })
 
     findMyWay.on('GET', '/', handler, _store)
     findMyWay.on('GET', '/a', handler, _store)
     findMyWay.on('GET', '/b', handler, _store)
 
-    findMyWay.lookup(_req, _res)
-
-    const router = rm({ notFound: 'gg' })
+    const router = rm({ notFound: { func: notFoundHandler, store: _store } })
 
     router.add('GET', '/', { func: handler, store: _store })
     router.add('GET', '/a', { func: handler, store: _store })
@@ -34,8 +37,15 @@ t.test('static', t => {
 
     const r = router.compile()
 
+    findMyWay.lookup(_req, _res)
+
     const d = r(_req.method, _req.url)
     d.data.func(_req, _res, d.params, d.data.store)
+
+    findMyWay.lookup(_reqNotFound, _res)
+
+    const d2 = r(_reqNotFound.method, _reqNotFound.url)
+    d2.data.func(_reqNotFound, _res, d.params, d.data.store)
   })
     .then(() => {
       t.test('bench', t => {
@@ -44,8 +54,9 @@ t.test('static', t => {
         const method = 'GET'
         const path = '/'
 
-        const findMyWay = new FindMyWay()
+        const findMyWay = new FindMyWay({ defaultRoute: (req, res) => {} })
         const _req = { url: path, method: method, headers: {} }
+        const _reqNotFound = { url: '/unknown', method: method, headers: {} }
         const _res = {}
         const _store = {}
         function handler (req, res, params, store) { }
@@ -53,7 +64,7 @@ t.test('static', t => {
         findMyWay.on('GET', '/a', handler, _store)
         findMyWay.on('GET', '/b', handler, _store)
 
-        const router = rm({ notFound: 'gg' })
+        const router = rm({ notFound: { func: (req, res) => {}, store: _store } })
 
         router.add('GET', '/', { func: handler, store: _store })
         router.add('GET', '/a', { func: handler, store: _store })
@@ -62,19 +73,25 @@ t.test('static', t => {
         const r = router.compile()
 
         suite
-          .add('findMyWay', function () {
+          .add('findMyWay - ok', function () {
             findMyWay.lookup(_req, _res)
           })
-          .add('fast-router', function () {
+          .add('fast-router - ok', function () {
             const d = r(_req.method, _req.url)
             d.data.func(_req, _res, d.params, d.data.store)
+          })
+          .add('findMyWay - not found', function () {
+            findMyWay.lookup(_req, _reqNotFound)
+          })
+          .add('fast-router - not found', function () {
+            const d = r(_reqNotFound.method, _reqNotFound.url)
+            d.data.func(_reqNotFound, _res, d.params, d.data.store)
           })
           .on('cycle', function (event) {
             console.log(String(event.target))
           })
           .on('complete', function () {
             console.log('Fastest is ' + this.filter('fastest').map('name'))
-
             t.end()
           })
           .run({ 'async': true })
