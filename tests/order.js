@@ -49,7 +49,7 @@ module.exports = (t, debug) => {
 
         t.strictSame(r('GET', '/my-id'), { data: 1, params: { id: 'my-id' } })
         t.strictSame(r('GET', '/55'), { data: 1, params: { id: '55' } })
-        t.strictSame(r('GET', '/55/gg'), { data: 2, params: { '*': '55/gg', id: undefined } })
+        t.strictSame(r('GET', '/55/gg'), { data: 2, params: { '*': '55/gg' } })
 
         t.end()
       })
@@ -64,7 +64,7 @@ module.exports = (t, debug) => {
 
         t.strictSame(r('GET', '/my-id'), { data: 1, params: { id: 'my-id' } })
         t.strictSame(r('GET', '/55'), { data: 1, params: { id: '55' } })
-        t.strictSame(r('GET', '/55/gg'), { data: 2, params: { '*': '55/gg', id: undefined } })
+        t.strictSame(r('GET', '/55/gg'), { data: 2, params: { '*': '55/gg' } })
 
         t.end()
       })

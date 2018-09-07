@@ -22,7 +22,7 @@ function assetsHandler (req, res, params, query) {
 const rm = require('.')({ notFound: notFoundHandler })
 rm.add('GET', '/', rootHandler)
 rm.add('GET', '/user/:userId', userHandler)
-rm.add('GET', '/customer/:customerId(^\\d+$)', customerHandler)
+rm.add('GET', '/customer/:name-:surname/:age(^\\d+$)', customerHandler)
 rm.add('GET', '/assets/*', assetsHandler)
 
 const router = rm.compile()

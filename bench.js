@@ -3,188 +3,120 @@
 const t = require('tap')
 const Benchmark = require('benchmark')
 const FindMyWay = require('find-my-way')
-const rm = require('.')
+const roadMarking = require('.')
+
+function handler (req, res, params, store) { }
+function notFound (req, res) { }
+
+function createFindMyWay (notFoundHandler, handler, store) {
+  const findMyWay = new FindMyWay({ defaultRoute: notFoundHandler })
+
+  findMyWay.on('GET', '/', handler, store)
+  findMyWay.on('GET', '/user/:id', handler, store)
+  findMyWay.on('GET', '/user/:id/static', handler, store)
+  findMyWay.on('GET', '/customer/:name-:surname', handler, store)
+  findMyWay.on('GET', '/at/:hour(^\\d+)h:minute(^\\d+)m', handler, store)
+  findMyWay.on('GET', '/abc/def/ghi/lmn/opq/rst/uvz', handler, store)
+  // findMyWay.on('GET', '/', { version: '1.2.0' }, () => true)
+
+  return findMyWay
+}
+
+function createRoadMarking (notFoundHandler, handler, store) {
+  const r = roadMarking({ notFound: { func: notFoundHandler, store } })
+
+  r.add('GET', '/', { func: handler, store })
+  r.add('GET', '/user/:id', { func: handler, store })
+  r.add('GET', '/user/:id/static', { func: handler, store })
+  r.add('GET', '/customer/:name-:surname', { func: handler, store })
+  r.add('GET', '/at/:hour(^\\d+)h:minute(^\\d+)m', { func: handler, store })
+  r.add('GET', '/abc/def/ghi/lmn/opq/rst/uvz', { func: handler, store })
+
+  return r.compile()
+}
 
 t.test('static', t => {
-  return t.test('should behave as find-my-way', t => {
-    t.plan(6 * 2)
-
-    const _req = { url: '/', method: 'GET', headers: {} }
-    const _reqNotFound = { url: '/unknown', method: 'GET', headers: {} }
-    const _res = {}
-    const _store = {}
-    function handler (req, res, params, store) {
-      t.equal(req, _req)
-      t.equal(res, _res)
-      t.strictSame(params, {})
-      t.equal(store, _store)
-    }
-    function notFoundHandler (req, res) {
-      t.equal(req, _reqNotFound)
-      t.equal(res, _res)
-    }
-    const findMyWay = new FindMyWay({ defaultRoute: notFoundHandler })
-
-    findMyWay.on('GET', '/', handler, _store)
-    findMyWay.on('GET', '/a', handler, _store)
-    findMyWay.on('GET', '/b', handler, _store)
-
-    const router = rm({ notFound: { func: notFoundHandler, store: _store } })
-
-    router.add('GET', '/', { func: handler, store: _store })
-    router.add('GET', '/a', { func: handler, store: _store })
-    router.add('GET', '/b', { func: handler, store: _store })
-
-    const r = router.compile()
-
-    findMyWay.lookup(_req, _res)
-
-    const d = r(_req.method, _req.url)
-    d.data.func(_req, _res, d.params, d.data.store)
-
-    findMyWay.lookup(_reqNotFound, _res)
-
-    const d2 = r(_reqNotFound.method, _reqNotFound.url)
-    d2.data.func(_reqNotFound, _res, d.params, d.data.store)
-  })
-    .then(() => {
-      t.test('bench', t => {
-        const suite = new Benchmark.Suite()
-
-        const method = 'GET'
-        const path = '/'
-
-        const findMyWay = new FindMyWay({ defaultRoute: (req, res) => {} })
-        const _req = { url: path, method: method, headers: {} }
-        const _reqNotFound = { url: '/unknown', method: method, headers: {} }
-        const _res = {}
-        const _store = {}
-        function handler (req, res, params, store) { }
-        findMyWay.on('GET', '/', handler, _store)
-        findMyWay.on('GET', '/a', handler, _store)
-        findMyWay.on('GET', '/b', handler, _store)
-
-        const router = rm({ notFound: { func: (req, res) => {}, store: _store } })
-
-        router.add('GET', '/', { func: handler, store: _store })
-        router.add('GET', '/a', { func: handler, store: _store })
-        router.add('GET', '/b', { func: handler, store: _store })
-
-        const r = router.compile()
-
-        suite
-          .add('findMyWay - ok', function () {
-            findMyWay.lookup(_req, _res)
-          })
-          .add('fast-router - ok', function () {
-            const d = r(_req.method, _req.url)
-            d.data.func(_req, _res, d.params, d.data.store)
-          })
-          .add('findMyWay - not found', function () {
-            findMyWay.lookup(_reqNotFound, _res)
-          })
-          .add('fast-router - not found', function () {
-            const d = r(_reqNotFound.method, _reqNotFound.url)
-            d.data.func(_reqNotFound, _res, d.params, d.data.store)
-          })
-          .on('cycle', function (event) {
-            console.log(String(event.target))
-          })
-          .on('complete', function () {
-            console.log('Fastest is ' + this.filter('fastest').map('name'))
-            t.end()
-          })
-          .run({ 'async': true })
-      })
-    })
+  return createTest(t, 'GET', '/', {})
 })
 
 t.test('dynamic', t => {
+  return createTest(t, 'GET', '/user/tommaso', { id: 'tommaso' })
+})
+
+t.test('multi-parametric', t => {
+  return createTest(t, 'GET', '/customer/tommaso-allevi', { name: 'tommaso', surname: 'allevi' })
+})
+
+t.test('multi-regexp-parametric', t => {
+  return createTest(t, 'GET', '/at/12h00m', { hour: '12', minute: '00' })
+})
+
+t.test('long-static', t => {
+  return createTest(t, 'GET', '/abc/def/ghi/lmn/opq/rst/uvz', { })
+})
+
+t.test('long-dynamic', t => {
+  return createTest(t, 'GET', '/user/qwertyuiopasdfghjklzxcvbnm/static', { id: 'qwertyuiopasdfghjklzxcvbnm' })
+})
+
+function createTest (t, method, path, expectedParams) {
   return t.test('should behave as find-my-way', t => {
     t.plan(6 * 2)
 
-    const _req = { url: '/user/tom', method: 'GET', headers: {} }
+    const _req = { url: path, method: method, headers: {} }
     const _reqNotFound = { url: '/unknown', method: 'GET', headers: {} }
     const _res = {}
     const _store = {}
-    function handler (req, res, params, store) {
+    const handler = function handler (req, res, params, store) {
       t.equal(req, _req)
       t.equal(res, _res)
-      t.strictSame(params, { id: 'tom' })
+      t.strictSame(params, expectedParams)
       t.equal(store, _store)
     }
     function notFoundHandler (req, res) {
       t.equal(req, _reqNotFound)
       t.equal(res, _res)
     }
-    const findMyWay = new FindMyWay({ defaultRoute: notFoundHandler })
 
-    findMyWay.on('GET', '/', handler, _store)
-    findMyWay.on('GET', '/user/:id', handler, _store)
-
-    const router = rm({ notFound: { func: notFoundHandler, store: _store } })
-
-    router.add('GET', '/', { func: handler, store: _store })
-    router.add('GET', '/user/:id', { func: handler, store: _store })
-
-    const r = router.compile()
+    const findMyWay = createFindMyWay(notFoundHandler, handler, _store)
+    const router = createRoadMarking(notFoundHandler, handler, _store)
 
     findMyWay.lookup(_req, _res)
 
-    const d = r(_req.method, _req.url)
+    const d = router(_req.method, _req.url)
     d.data.func(_req, _res, d.params, d.data.store)
 
     findMyWay.lookup(_reqNotFound, _res)
 
-    const d2 = r(_reqNotFound.method, _reqNotFound.url)
+    const d2 = router(_reqNotFound.method, _reqNotFound.url)
     d2.data.func(_reqNotFound, _res, d.params, d.data.store)
   })
     .then(() => {
       t.test('bench', t => {
         const suite = new Benchmark.Suite()
 
-        const method = 'GET'
-        const path = '/user/tom'
-
-        const findMyWay = new FindMyWay({ defaultRoute: (req, res) => {} })
         const _req = { url: path, method: method, headers: {} }
         const _reqNotFound = { url: '/unknown', method: method, headers: {} }
-        const _reqNotFound2 = { url: '/user/tom/unknown', method: method, headers: {} }
         const _res = {}
         const _store = {}
-        function handler (req, res, params, store) { }
-        findMyWay.on('GET', '/', handler, _store)
-        findMyWay.on('GET', '/user/:id', handler, _store)
 
-        const router = rm({ notFound: { func: (req, res) => {}, store: _store } })
-
-        router.add('GET', '/', { func: handler, store: _store })
-        router.add('GET', '/user/id', { func: handler, store: _store })
-        router.add('GET', '/b', { func: handler, store: _store })
-
-        const r = router.compile()
+        const findMyWay = createFindMyWay(notFound, handler, _store)
+        const r = createRoadMarking(notFound, handler, _store)
 
         suite
           .add('findMyWay - ok', function () {
             findMyWay.lookup(_req, _res)
           })
-          .add('fast-router - ok', function () {
+          .add('road-marking - ok', function () {
             const d = r(_req.method, _req.url)
             d.data.func(_req, _res, d.params, d.data.store)
           })
           .add('findMyWay - not found', function () {
             findMyWay.lookup(_reqNotFound, _res)
           })
-          .add('fast-router - not found', function () {
+          .add('road-marking - not found', function () {
             const d = r(_reqNotFound.method, _reqNotFound.url)
             d.data.func(_reqNotFound, _res, d.params, d.data.store)
-          })
-          .add('findMyWay - not found - 2', function () {
-            findMyWay.lookup(_reqNotFound2, _res)
-          })
-          .add('fast-router - not found - 2', function () {
-            const d = r(_reqNotFound2.method, _reqNotFound2.url)
-            d.data.func(_reqNotFound2, _res, d.params, d.data.store)
           })
           .on('cycle', function (event) {
             console.log(String(event.target))
@@ -196,54 +128,4 @@ t.test('dynamic', t => {
           .run({ 'async': true })
       })
     })
-})
-
-/*
-{
-  const suite = new Benchmark.Suite('static')
-
-  const PATH = '/a'
-  const METHOD = 'GET'
-  const opt = { method: METHOD, url: PATH, headers: {} }
-
-  suite
-    .add('findMyWay', function () {
-      findMyWay.lookup(opt, null)
-    })
-    .add('fast-router', function () {
-      const a = r(METHOD, PATH)
-      a.data(a.params)
-    })
-    .on('cycle', function (event) {
-      console.log(String(event.target))
-    })
-    .on('complete', function () {
-      console.log('Fastest is ' + this.filter('fastest').map('name'))
-    })
-    .run({ 'async': true })
 }
-
-{
-  const suite = new Benchmark.Suite('params')
-
-  const PATH = '/my-id'
-  const METHOD = 'GET'
-  const opt = { method: METHOD, url: PATH, headers: {} }
-
-  suite
-    .add('findMyWay', function () {
-      findMyWay.lookup(opt, null)
-    })
-    .add('fast-router', function () {
-      const a = r(METHOD, PATH)
-      a.data(a.params)
-    })
-    .on('cycle', function (event) {
-      console.log(String(event.target))
-    })
-    .on('complete', function () {
-      console.log('Fastest is ' + this.filter('fastest').map('name'))
-    })
-    .run({ 'async': true })
-}
-*/

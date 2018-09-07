@@ -5,78 +5,177 @@ const fastDecode = require('fast-decode-uri-component')
 
 function Router (opt) {
   this._routes = []
-  this.opt = opt
+  this.opt = opt || {}
+  this.opt.caseSensitive = opt.hasOwnProperty('caseSensitive') ? !!opt.caseSensitive : true
 }
 
-Router.prototype.add = function (method, path, func) {
+Router.prototype.add = function (method, path, data) {
+  // if (typeof method !== 'string') throw new Error('method should be a string')
+  if (typeof path !== 'string') throw new Error('path should be a string')
   if (/\*/.test(path) && !/\*$/.test(path)) {
     throw new Error('Unsupported feature: wildcard should be on the end of the path')
+  }
+
+  if (!this.opt.caseSensitive) path = path.toLowerCase()
+
+  let j = 0
+  const paramNames = []
+  const paramRegExps = []
+  const paramRegexpSources = []
+  const paramEndTokens = []
+  while (j < path.length) {
+    if (path[j] !== ':') {
+      j++
+      continue
+    }
+    const currentJ = j
+    while (path[j] !== '(' && path[j] !== '/' && path[j] !== '-' && j < path.length) {
+      j++
+    }
+    let name = path.slice(currentJ + 1, j)
+    let regex = null
+    let regexpSource = null
+    let endToken = j === path.length ? null : path[j]
+    if (path[j] === '(') {
+      const startRegex = j
+      j++
+      let bracketCount = 1
+      while (bracketCount !== 0 && j < path.length) {
+        if (path[j] === '(') bracketCount += 1
+        if (path[j] === ')') bracketCount -= 1
+        j++
+      }
+      if (bracketCount !== 0) throw new Error('Invalid regex')
+      name = path.slice(currentJ + 1, startRegex)
+      regexpSource = path.slice(startRegex, j)
+      regex = new RegExp(regexpSource)
+      endToken = j === path.length ? null : path[j]
+    }
+    paramNames.push(name)
+    paramRegExps.push(regex)
+    paramRegexpSources.push(regexpSource)
+    paramEndTokens.push(endToken)
+  }
+
+  paramRegexpSources.filter(rs => rs)
+    .forEach(rs => { path = path.replace(rs, '') })
+
+  if (this._routes.some(r => r.method === method && r.path === path)) {
+    throw new Error('Duplicated route definition: ' + method + ' ' + path)
   }
   this._routes.push({
     path,
     method,
-    func,
-    hash: 'f' + this._routes.length,
-    parametered: /:/.test(path),
-    wildcard: /\*$/.test(path)
+    paramNames: paramNames,
+    paramRegExps: paramRegExps,
+    paramRegexpSources: paramRegexpSources,
+    paramEndTokens: paramEndTokens,
+    data,
+    hash: 'f' + this._routes.length
   })
   return this
 }
 
+function reorderChildren (tree) {
+  tree.children = tree.children.map((c, i) => [c, i])
+    .sort(function (a, b) {
+      const aType = a[0].type
+      const bType = b[0].type
+      const aIndex = a[1]
+      const bIndex = b[1]
+      const aComesFirst = -1
+      const aComesAfter = 1
+      if (aType === 'static' && bType === 'static') {
+        if (aIndex < bIndex) return aComesFirst
+        if (aIndex > bIndex) return aComesAfter
+        throw new Error('Never happen')
+      }
+      if (aType === 'static' && bType === 'param') {
+        return aComesFirst
+      }
+      if (aType === 'static' && bType === 'wildcard') {
+        return aComesFirst
+      }
+      if (aType === 'param' && bType === 'static') {
+        return aComesAfter
+      }
+      if (aType === 'param' && bType === 'param') {
+        if (aIndex < bIndex) return aComesFirst
+        if (aIndex > bIndex) return aComesAfter
+        throw new Error('Never happen')
+      }
+      if (aType === 'param' && bType === 'wildcard') {
+        return aComesFirst
+      }
+      if (aType === 'wildcard' && bType === 'static') {
+        return aComesAfter
+      }
+      if (aType === 'wildcard' && bType === 'param') {
+        return aComesAfter
+      }
+      if (aType === 'wildcard' && bType === 'wildcard') {
+        throw new Error('Never happen')
+      }
+      throw new Error('Unknown types')
+    })
+    .map(v => v[0])
+  tree.children.forEach(t => reorderChildren(t))
+}
+
 Router.prototype.compile = function ({ debug } = {}) {
   debug = !!debug
-  function cicle (tree, gen, depth, parametered) {
-    gen('var c%d = path.charCodeAt(depth)', depth)
+  const caseSensitive = this.opt.caseSensitive
 
-    if (tree.isLeaf && !tree.wildcard) {
-      if (debug) gen('console.log(depth, len, %d)', depth)
-      gen(`if (depth === len) {`)
-      gen(`return { data: %s, params: params }`, tree.isLeaf.hash)
-      gen(`return { data: notFound, params: params }`)
-      gen(`}`)
-    }
-
-    for (var i in tree.children) {
-      if (debug) gen('console.log(%d, c%d, %d, c%d === %d, path.charAt(depth))', depth, depth, i.charCodeAt(0), depth, i.charCodeAt(0))
-      if (debug) gen('//', i)
-      gen(`if (c%d === %d) {`, depth, i.charCodeAt(0))
-      gen('depth += 1')
-
-      cicle(tree.children[i], gen, depth + 1, parametered || !!tree.params)
-
-      if (parametered || !!tree.params) {
-        gen('depth -= 1')
-      } else {
-        gen(`return { data: notFound, params: params }`)
-      }
-      gen(`}`)
-    }
-
-    if (tree.params) {
-      gen(`var d%d = depth`, depth)
-      gen(`var c%d = path.charCodeAt(++depth)`, depth)
-      if (debug) gen('//', tree.params.name)
-      gen(`while(c%d !== %d && c%d !== %d && depth < len) {`, depth, '/'.charCodeAt(0), depth, (tree.params.endToken || '/').charCodeAt(0))
-      gen('c%d = path.charCodeAt(++depth)', depth)
-      gen('}')
-      gen('params.%s = fastDecode(path.slice(d%d, depth))', tree.params.name, depth)
-      if (tree.params.regex) {
-        gen(`if (%s.test(params.%s)) {`, tree.params.regex.toString(), tree.params.name)
-      }
-      cicle(tree.params, gen, depth, true)
-      if (tree.params.regex) {
+  function cicle (tree, gen, depth, paramNames) {
+    if (tree.type === 'static') {
+      gen('var c%d = path.charCodeAt(depth)', depth)
+      if (debug) gen('console.log(path.charAt(depth), "%s")', tree.char)
+      if (debug) gen('// %s', tree.char)
+      gen(`if (c%d === %d) {`, depth, tree.char.charCodeAt(0))
+      gen('depth++')
+      if (tree.isLeaf) {
+        if (debug) gen('console.log(depth, len, %d)', depth)
+        gen(`if (depth === len) {`)
+        gen(`return { data: %s, params: { %s } }`, tree.isLeaf.hash, paramNames.map(n => `'${n}': ${n}`).join(', '))
         gen(`}`)
       }
-      // delete params.%s should fit better from feature point of view
-      // but the performance?
-      gen('params.%s = undefined', tree.params.name)
-      gen('depth = d%d', depth)
+      tree.children.forEach(t => cicle(t, gen, depth + 1, paramNames))
+      gen('depth--')
+      gen('}')
+      return
     }
-
-    if (tree.wildcard) {
-      gen('params["*"] = path.slice(depth)')
-      gen(`return { data: %s, params: params }`, tree.isLeaf.hash)
+    if (tree.type === 'param') {
+      gen('var i%d = depth', depth)
+      gen('var c%d = path.charCodeAt(depth)', depth)
+      gen(`while(c%d !== %d && c%d !== %d && depth < len) {`, depth, '/'.charCodeAt(0), depth, (tree.endToken || '/').charCodeAt(0))
+      gen('c%d = path.charCodeAt(++depth)', depth)
+      gen('}')
+      gen('var %s = fastDecode(path.slice(i%d, depth))', tree.name, depth)
+      if (debug) gen('console.log(i%d, depth, %s)', depth, tree.name)
+      if (tree.source) {
+        if (debug) gen('console.log("testing regexp", "%s", %s)', tree.source, tree.name)
+        gen('if (/%s/.test(%s)) {', tree.source, tree.name)
+      }
+      const p = paramNames.concat([tree.name])
+      if (tree.isLeaf) {
+        if (debug) gen('console.log(depth, len, %d)', depth)
+        gen(`if (depth === len) {`)
+        gen(`return { data: %s, params: { %s } }`, tree.isLeaf.hash, p.map(n => `'${n}': ${n}`).join(', '))
+        gen(`}`)
+      }
+      tree.children.forEach(t => cicle(t, gen, depth + 1, p))
+      if (tree.source) {
+        gen('}')
+      }
+      gen('depth = i%d', depth)
+      return
     }
+    if (tree.type === 'wildcard') {
+      gen('var wildcard = fastDecode(path.slice(depth))')
+      gen(`return { data: %s, params: { %s } }`, tree.isLeaf.hash, paramNames.map(n => `'${n}': ${n}`).concat([`'*': wildcard`]).join(', '))
+      return
+    }
+    throw new Error('Unknwon type: ' + tree.type)
   }
 
   const gen = genfun()
@@ -84,23 +183,23 @@ Router.prototype.compile = function ({ debug } = {}) {
   const tree = {
     GET: {
       isLeaf: false,
-      children: {}
+      children: []
     },
     POST: {
       isLeaf: false,
-      children: {}
+      children: []
     },
     PUT: {
       isLeaf: false,
-      children: {}
+      children: []
     },
     PATCH: {
       isLeaf: false,
-      children: {}
+      children: []
     },
     DELETE: {
       isLeaf: false,
-      children: {}
+      children: []
     }
   }
   const methods = [ 'GET', 'POST', 'PUT', 'PATCH', 'DELETE' ]
@@ -110,80 +209,81 @@ Router.prototype.compile = function ({ debug } = {}) {
     for (let i = 0; i < this._routes.length; i++) {
       if (this._routes[i].method !== method) continue
 
-      const { path, func, hash, parametered, wildcard } = this._routes[i]
+      const { path, data, hash, paramNames, paramRegExps, paramEndTokens, paramRegexpSources } = this._routes[i]
       let root = tree[method]
 
-      if (parametered || wildcard) {
-        for (let j = 0; j < path.length; j++) {
-          const char = path[j]
-          if (char === '*') {
-            root.wildcard = true
-            root.isLeaf = true
-            continue
-          }
-          if (char === ':') {
-            const currentJ = j
-            while (path[j] !== '(' && path[j] !== '/' && path[j] !== '-' && j < path.length) {
-              j++
-            }
-            let name = path.slice(currentJ + 1, j)
-            let regex = null
-            let endToken = j === path.length ? null : path[j]
-            if (path[j] === '(') {
-              const startRegex = j
-              j++
-              let bracketCount = 1
-              while (bracketCount !== 0 && j < path.length) {
-                if (path[j] === '(') bracketCount += 1
-                if (path[j] === ')') bracketCount -= 1
-                j++
-              }
-              if (bracketCount !== 0) throw new Error('Invalid regex')
-              name = path.slice(currentJ + 1, startRegex)
-              regex = new RegExp(path.slice(startRegex, j))
-              endToken = j === path.length ? null : path[j]
-            }
-            if (!root.params) {
-              root.params = {
-                isLeaf: false,
-                name: name,
-                regex: regex,
-                endToken: endToken,
-                children: {}
-              }
-            }
-            root = root.params
-            j--
-          } else {
-            if (!root.children[char]) {
-              root.children[char] = { isLeaf: false, children: {} }
-            }
-            root = root.children[char]
-          }
+      let paramIndex = 0
+      for (let j = 0; j < path.length; j++) {
+        const char = path[j]
+        if (char === '*') {
+          root.children.push({
+            type: 'wildcard',
+            children: []
+          })
+          root = root.children[root.children.length - 1]
+          break // wildcard is always the last token
         }
-      } else {
-        for (let j = 0; j < path.length; j++) {
-          const char = path[j]
-          if (!root.children[char]) {
-            root.children[char] = { isLeaf: false, children: {} }
+        if (char === ':') {
+          const endToken = paramEndTokens[paramIndex++]
+          j += paramNames[paramIndex - 1].length
+          while (path[++j] !== endToken && j < path.length);
+          j--
+          const c = root.children.find(c => c.type === 'param' && c.name === paramNames[paramIndex - 1])
+          if (c) {
+            root = c
+          } else {
+            root.children.push({
+              type: 'param',
+              name: paramNames[paramIndex - 1],
+              regexp: paramRegExps[paramIndex - 1],
+              source: paramRegexpSources[paramIndex - 1],
+              endToken: endToken,
+              children: []
+            })
+            root = root.children[root.children.length - 1]
           }
-          root = root.children[char]
+          continue
+        }
+        const c = root.children.find(c => c.type === 'static' && c.char === char)
+        if (c) {
+          root = c
+        } else {
+          root.children.push({
+            type: 'static',
+            char: char,
+            children: []
+          })
+          root = root.children[root.children.length - 1]
         }
       }
-
-      root.isLeaf = { func, hash }
+      root.isLeaf = { data, hash }
     }
+
+    // Reorder children
+    reorderChildren(tree[method])
   }
 
   gen(`function lookup(method, path) {`)
+  if (!caseSensitive) {
+    gen(`path = path.toLowerCase()`)
+  }
   gen(`var len = path.length`)
+  gen(`for (var i = 0; i < len; i++) {`)
+  gen(`if (path.charCodeAt(i) === %d || path.charCodeAt(i) === %d) {`, '?'.charCodeAt(0), ';'.charCodeAt(0))
+  gen(`len = i`)
+  gen(`break`)
+  gen(`}`)
+  gen(`}`)
+  if (debug) gen(`console.log('length', len, 'pathlenght', path.length)`)
+
   gen(`var params = {}`)
   gen(`var depth = 0`)
 
   for (let im = 0; im < methods.length; im++) {
     const method = methods[im]
     gen('if (method === "%s") {', method)
-    cicle(tree[method], gen, 0, false)
+    tree[method].children.forEach(t => cicle(t, gen, 0, []))
+    gen(`return { data: notFound, params: params }`)
     gen('}')
   }
   gen(`return { data: notFound, params: params }`)
@@ -194,7 +294,7 @@ Router.prototype.compile = function ({ debug } = {}) {
     fastDecode: fastDecode
   }
   for (let i = 0; i < this._routes.length; i++) {
-    scope[this._routes[i].hash] = this._routes[i].func
+    scope[this._routes[i].hash] = this._routes[i].data
   }
 
   if (debug) console.log(require('util').inspect(tree, { depth: null }))
