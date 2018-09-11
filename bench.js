@@ -17,7 +17,7 @@ function createFindMyWay (notFoundHandler, handler, store) {
   findMyWay.on('GET', '/customer/:name-:surname', handler, store)
   findMyWay.on('GET', '/at/:hour(^\\d+)h:minute(^\\d+)m', handler, store)
   findMyWay.on('GET', '/abc/def/ghi/lmn/opq/rst/uvz', handler, store)
-  // findMyWay.on('GET', '/', { version: '1.2.0' }, () => true)
+  findMyWay.on('GET', '/', { version: '1.2.0' }, () => true)
 
   return findMyWay
 }
@@ -31,6 +31,7 @@ function createRoadMarking (notFoundHandler, handler, store) {
   r.add('GET', '/customer/:name-:surname', { func: handler, store })
   r.add('GET', '/at/:hour(^\\d+)h:minute(^\\d+)m', { func: handler, store })
   r.add('GET', '/abc/def/ghi/lmn/opq/rst/uvz', { func: handler, store })
+  r.add('GET', '/abc/def/ghi/lmn/opq/rst/uvz', '1.2.0', { func: handler, store })
 
   return r.compile()
 }
@@ -60,72 +61,39 @@ t.test('long-dynamic', t => {
 })
 
 function createTest (t, method, path, expectedParams) {
-  return t.test('should behave as find-my-way', t => {
-    t.plan(6 * 2)
+  return t.test('bench', t => {
+    const suite = new Benchmark.Suite()
 
     const _req = { url: path, method: method, headers: {} }
-    const _reqNotFound = { url: '/unknown', method: 'GET', headers: {} }
+    const _reqNotFound = { url: '/unknown', method: method, headers: {} }
     const _res = {}
     const _store = {}
-    const handler = function handler (req, res, params, store) {
-      t.equal(req, _req)
-      t.equal(res, _res)
-      t.strictSame(params, expectedParams)
-      t.equal(store, _store)
-    }
-    function notFoundHandler (req, res) {
-      t.equal(req, _reqNotFound)
-      t.equal(res, _res)
-    }
 
-    const findMyWay = createFindMyWay(notFoundHandler, handler, _store)
-    const router = createRoadMarking(notFoundHandler, handler, _store)
+    const findMyWay = createFindMyWay(notFound, handler, _store)
+    const r = createRoadMarking(notFound, handler, _store)
 
-    findMyWay.lookup(_req, _res)
-
-    const d = router(_req.method, _req.url)
-    d.data.func(_req, _res, d.params, d.data.store)
-
-    findMyWay.lookup(_reqNotFound, _res)
-
-    const d2 = router(_reqNotFound.method, _reqNotFound.url)
-    d2.data.func(_reqNotFound, _res, d.params, d.data.store)
-  })
-    .then(() => {
-      t.test('bench', t => {
-        const suite = new Benchmark.Suite()
-
-        const _req = { url: path, method: method, headers: {} }
-        const _reqNotFound = { url: '/unknown', method: method, headers: {} }
-        const _res = {}
-        const _store = {}
-
-        const findMyWay = createFindMyWay(notFound, handler, _store)
-        const r = createRoadMarking(notFound, handler, _store)
-
-        suite
-          .add('findMyWay - ok', function () {
-            findMyWay.lookup(_req, _res)
-          })
-          .add('road-marking - ok', function () {
-            const d = r(_req.method, _req.url)
-            d.data.func(_req, _res, d.params, d.data.store)
-          })
-          .add('findMyWay - not found', function () {
-            findMyWay.lookup(_reqNotFound, _res)
-          })
-          .add('road-marking - not found', function () {
-            const d = r(_reqNotFound.method, _reqNotFound.url)
-            d.data.func(_reqNotFound, _res, d.params, d.data.store)
-          })
-          .on('cycle', function (event) {
-            console.log(String(event.target))
-          })
-          .on('complete', function () {
-            console.log('Fastest is ' + this.filter('fastest').map('name'))
-            t.end()
-          })
-          .run({ 'async': true })
+    suite
+      .add('findMyWay - ok', function () {
+        findMyWay.lookup(_req, _res)
       })
-    })
+      .add('road-marking - ok', function () {
+        const d = r(_req.method, _req.url)
+        d.data.func(_req, _res, d.params, d.data.store)
+      })
+      .add('findMyWay - not found', function () {
+        findMyWay.lookup(_reqNotFound, _res)
+      })
+      .add('road-marking - not found', function () {
+        const d = r(_reqNotFound.method, _reqNotFound.url)
+        d.data.func(_reqNotFound, _res, d.params, d.data.store)
+      })
+      .on('cycle', function (event) {
+        console.log(String(event.target))
+      })
+      .on('complete', function () {
+        console.log('Fastest is ' + this.filter('fastest').map('name'))
+        t.end()
+      })
+      .run({ 'async': true })
+  })
 }

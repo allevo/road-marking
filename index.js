@@ -2,6 +2,7 @@
 
 const genfun = require('generate-function')
 const fastDecode = require('fast-decode-uri-component')
+const versionManager = require('./version')
 
 function Router (opt) {
   this._routes = []
@@ -9,11 +10,16 @@ function Router (opt) {
   this.opt.caseSensitive = opt.hasOwnProperty('caseSensitive') ? !!opt.caseSensitive : true
 }
 
-Router.prototype.add = function (method, path, data) {
-  // if (typeof method !== 'string') throw new Error('method should be a string')
+Router.prototype.add = function (method, path, version, data) {
+  if (typeof method !== 'string') throw new Error('method should be a string')
   if (typeof path !== 'string') throw new Error('path should be a string')
   if (/\*/.test(path) && !/\*$/.test(path)) {
     throw new Error('Unsupported feature: wildcard should be on the end of the path')
+  }
+
+  if (arguments.length === 3) {
+    data = version
+    version = undefined
   }
 
   if (!this.opt.caseSensitive) path = path.toLowerCase()
@@ -60,9 +66,20 @@ Router.prototype.add = function (method, path, data) {
   paramRegexpSources.filter(rs => rs)
     .forEach(rs => { path = path.replace(rs, '') })
 
-  if (this._routes.some(r => r.method === method && r.path === path)) {
-    throw new Error('Duplicated route definition: ' + method + ' ' + path)
+  let store
+  let alreadyRegisteredRoute = this._routes.find(r => r.method === method && r.path === path)
+  if (alreadyRegisteredRoute) {
+    store = alreadyRegisteredRoute.store
+  } else {
+    store = versionManager()
   }
+
+  if (version) {
+    store.add(version, data)
+  } else {
+    store.setDefaultValueOnce(data)
+  }
+
   this._routes.push({
     path,
     method,
@@ -70,7 +87,7 @@ Router.prototype.add = function (method, path, data) {
     paramRegExps: paramRegExps,
     paramRegexpSources: paramRegexpSources,
     paramEndTokens: paramEndTokens,
-    data,
+    store: store,
     hash: 'f' + this._routes.length
   })
   return this
@@ -209,7 +226,7 @@ Router.prototype.compile = function ({ debug } = {}) {
     for (let i = 0; i < this._routes.length; i++) {
       if (this._routes[i].method !== method) continue
 
-      const { path, data, hash, paramNames, paramRegExps, paramEndTokens, paramRegexpSources } = this._routes[i]
+      const { path, store, hash, paramNames, paramRegExps, paramEndTokens, paramRegexpSources } = this._routes[i]
       let root = tree[method]
 
       let paramIndex = 0
@@ -256,7 +273,7 @@ Router.prototype.compile = function ({ debug } = {}) {
           root = root.children[root.children.length - 1]
         }
       }
-      root.isLeaf = { data, hash }
+      root.isLeaf = { store, hash }
     }
 
     // Reorder children
@@ -294,7 +311,7 @@ Router.prototype.compile = function ({ debug } = {}) {
     fastDecode: fastDecode
   }
   for (let i = 0; i < this._routes.length; i++) {
-    scope[this._routes[i].hash] = this._routes[i].data
+    scope[this._routes[i].hash] = this._routes[i].store
   }
 
   if (debug) console.log(require('util').inspect(tree, { depth: null }))

@@ -25,6 +25,8 @@
   },
   "dependencies": {
     "fast-decode-uri-component": "^1.0.0",
-    "generate-function": "^2.3.1"
+    "generate-function": "^2.3.1",
+    "semver": "^5.5.1",
+    "semver-store": "^0.3.0"
   }
 }
