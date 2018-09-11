@@ -21,3 +21,17 @@ t.test('duplicate path', t => {
   t.throws(() => r.add('GET', '/'))
   t.end()
 })
+
+t.test('wildcard should be as last char', t => {
+  const r = roadMarking({})
+  r.add('GET', '/')
+  t.throws(() => r.add('GET', '/*/suffix'))
+  t.end()
+})
+
+t.test('invalid regexp', t => {
+  const r = roadMarking({})
+  r.add('GET', '/')
+  t.throws(() => r.add('GET', '/:id(()'))
+  t.end()
+})

@@ -35,13 +35,15 @@ t.test('version - default value', t => {
     .add('1.1.0', 3)
     .add('2.0.0', 4)
     .add('11.1.0', 5)
+    .add('1.111.0', 6)
+    .add('1.1.1110', 7)
 
   const v = vs.compile({ debug: false })
 
   t.equal(v('1.0.0'), 1)
   t.equal(v('2.0.0'), 4)
   t.equal(v('1.0.x'), 2)
-  t.equal(v('1.x'), 3)
+  t.equal(v('1.x'), 6)
   t.equal(v('*'), 5)
   t.equal(v('55.55.55'), -1)
 
@@ -55,6 +57,19 @@ t.test('version - empty', t => {
   const v = vs.compile({ debug: false })
 
   t.equal(v('55.55.55'), -1)
+
+  t.end()
+})
+
+t.test('version - empty - #2', t => {
+  const vs = Version()
+  vs.setDefaultValueOnce(-1)
+
+  const v = vs.compile({ debug: false })
+
+  t.equal(v(), -1)
+  t.equal(v(undefined), -1)
+  t.equal(v(null), -1)
 
   t.end()
 })

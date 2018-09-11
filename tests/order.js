@@ -171,6 +171,20 @@ module.exports = (t, debug) => {
         t.end()
       })
 
+      t.test('#5', t => {
+        const router = rm({ notFound })
+
+        router.add('GET', '/prefix/:id/suffix1', 1)
+        router.add('GET', '/prefix/:otherId/suffix2', 2)
+
+        const r = router.compile({ debug })
+
+        t.strictSame(r('GET', '/prefix/22/suffix1'), { data: 1, params: { id: '22' } })
+        t.strictSame(r('GET', '/prefix/11/suffix2'), { data: 2, params: { otherId: '11' } })
+
+        t.end()
+      })
+
       t.end()
     })
 

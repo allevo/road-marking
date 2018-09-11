@@ -21,6 +21,13 @@ Version.prototype.setDefaultValueOnce = function (defaultValue) {
   return this
 }
 
+Version.prototype.setDefaultValueFromWildcard = function () {
+  if (!this.hasOwnProperty('defaultValue')) {
+    this.setDefaultValueOnce(this.semverStore.get('*'))
+  }
+  return this
+}
+
 function getNextStepName (name, c) {
   if (name === 'FIRST_MAJOR' || name === 'MAJOR') {
     if (c === '.') {
@@ -41,6 +48,9 @@ function getNextStepName (name, c) {
     return 'FIRST_PATCH'
   }
   if (name === 'FIRST_PATCH') {
+    return 'PATCH'
+  }
+  if (name === 'PATCH') {
     return 'PATCH'
   }
   throw new Error('Unknown step name: ' + name)
@@ -118,6 +128,8 @@ Version.prototype.compile = function compile ({ debug = false } = {}) {
   }
 
   gen('function version (ver) {')
+  if (debug) gen('console.log("get version", ver, typeof ver, defaultValue)')
+  gen('if (ver === undefined || ver === null) return defaultValue')
   gen('var i = 0')
   gen('var len = ver.length')
   cycle(tree, gen, scope, 'FIRST_MAJOR', [])
