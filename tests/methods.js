@@ -118,21 +118,6 @@ module.exports = (t, debug) => {
         t.end()
       })
 
-      t.test('bench case', t => {
-        const router = roadMarking({ notFound })
-
-        router.add(method, '/', 1)
-        router.add(method, '/a', 2)
-        router.add(method, '/b', 3)
-        router.add(method, '/:id', 4)
-
-        const r = router.compile({ debug })
-
-        t.strictSame(r(method, '/my-id'), { data: 4, params: { id: 'my-id' } })
-
-        t.end()
-      })
-
       t.test('find-my-way tests', t => {
         const router = roadMarking({ notFound })
 

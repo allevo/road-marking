@@ -150,7 +150,11 @@ Router.prototype.compile = function ({ debug } = {}) {
 
   function cicle (tree, gen, depth, paramNames) {
     if (tree.isLeaf) {
-      scope[tree.isLeaf.hash] = tree.isLeaf.store.compile({ debug })
+      if (tree.isLeaf.store.versions.length === 0) {
+        scope[tree.isLeaf.hash] = tree.isLeaf.store.defaultValue
+      } else {
+        scope[tree.isLeaf.hash] = tree.isLeaf.store.compile({ debug })
+      }
     }
     if (tree.type === 'static') {
       gen('var c%d = path.charCodeAt(depth)', depth)
@@ -161,7 +165,11 @@ Router.prototype.compile = function ({ debug } = {}) {
       if (tree.isLeaf) {
         if (debug) gen('console.log(depth, len, %d)', depth)
         gen(`if (depth === len) {`)
-        gen(`return { data: %s(version), params: { %s } }`, tree.isLeaf.hash, paramNames.map(n => `'${n}': ${n}`).join(', '))
+        if (tree.isLeaf.store.versions.length === 0) {
+          gen(`return { data: %s, params: { %s } }`, tree.isLeaf.hash, paramNames.map(n => `'${n}': ${n}`).join(', '))
+        } else {
+          gen(`return { data: %s(version), params: { %s } }`, tree.isLeaf.hash, paramNames.map(n => `'${n}': ${n}`).join(', '))
+        }
         gen(`}`)
       }
       tree.children.forEach(t => cicle(t, gen, depth + 1, paramNames))
@@ -185,7 +193,11 @@ Router.prototype.compile = function ({ debug } = {}) {
       if (tree.isLeaf) {
         if (debug) gen('console.log(depth, len, %d)', depth)
         gen(`if (depth === len) {`)
-        gen(`return { data: %s(version), params: { %s } }`, tree.isLeaf.hash, p.map(n => `'${n}': ${n}`).join(', '))
+        if (tree.isLeaf.store.versions.length === 0) {
+          gen(`return { data: %s, params: { %s } }`, tree.isLeaf.hash, p.map(n => `'${n}': ${n}`).join(', '))
+        } else {
+          gen(`return { data: %s(version), params: { %s } }`, tree.isLeaf.hash, p.map(n => `'${n}': ${n}`).join(', '))
+        }
         gen(`}`)
       }
       tree.children.forEach(t => cicle(t, gen, depth + 1, p))
@@ -197,7 +209,12 @@ Router.prototype.compile = function ({ debug } = {}) {
     }
     if (tree.type === 'wildcard') {
       gen('var wildcard = fastDecode(path.slice(depth))')
-      gen(`return { data: %s(version), params: { %s } }`, tree.isLeaf.hash, paramNames.map(n => `'${n}': ${n}`).concat([`'*': wildcard`]).join(', '))
+      if (tree.isLeaf.store.versions.length === 0) {
+        gen(`return { data: %s, params: { %s } }`, tree.isLeaf.hash, paramNames.map(n => `'${n}': ${n}`).concat([`'*': wildcard`]).join(', '))
+      } else {
+        gen(`return { data: %s(version), params: { %s } }`, tree.isLeaf.hash, paramNames.map(n => `'${n}': ${n}`).concat([`'*': wildcard`]).join(', '))
+      }
+
       return
     }
     throw new Error('Unknwon type: ' + tree.type)

@@ -31,7 +31,7 @@ function createRoadMarking (notFoundHandler, handler, store) {
   r.add('GET', '/customer/:name-:surname', { func: handler, store })
   r.add('GET', '/at/:hour(^\\d+)h:minute(^\\d+)m', { func: handler, store })
   r.add('GET', '/abc/def/ghi/lmn/opq/rst/uvz', { func: handler, store })
-  r.add('GET', '/abc/def/ghi/lmn/opq/rst/uvz', '1.2.0', { func: handler, store })
+  r.add('GET', '/versioned', '1.2.0', { func: handler, store })
 
   return r.compile()
 }
@@ -60,6 +60,44 @@ t.test('long-dynamic', t => {
   return createTest(t, 'GET', '/user/qwertyuiopasdfghjklzxcvbnm/static', { id: 'qwertyuiopasdfghjklzxcvbnm' })
 })
 
+t.test('versioned', t => {
+  return t.test('bench', t => {
+    const suite = new Benchmark.Suite()
+
+    const _req = { url: '/versioned', method: 'GET', headers: { 'accept-version': '1.x' } }
+    const _reqNotFound = { url: '/versioned', method: 'GET', headers: { 'accept-version': '10.22.1' } }
+    const _res = {}
+    const _store = {}
+
+    const findMyWay = createFindMyWay(notFound, handler, _store)
+    const r = createRoadMarking(notFound, handler, _store)
+
+    suite
+      .add('findMyWay - ok', function () {
+        findMyWay.lookup(_req, _res)
+      })
+      .add('road-marking - ok', function () {
+        const d = r(_req.method, _req.url, _req.headers['accept-version'])
+        d.data.func(_req, _res, d.params, d.data.store)
+      })
+      .add('findMyWay - not found', function () {
+        findMyWay.lookup(_reqNotFound, _res)
+      })
+      .add('road-marking - not found', function () {
+        const d = r(_reqNotFound.method, _reqNotFound.url, _req.headers['accept-version'])
+        d.data.func(_reqNotFound, _res, d.params, d.data.store)
+      })
+      .on('cycle', function (event) {
+        console.log(String(event.target))
+      })
+      .on('complete', function () {
+        console.log('Fastest is ' + this.filter('fastest').map('name'))
+        t.end()
+      })
+      .run({ 'async': true })
+  })
+})
+
 function createTest (t, method, path, expectedParams) {
   return t.test('bench', t => {
     const suite = new Benchmark.Suite()
@@ -77,14 +115,14 @@ function createTest (t, method, path, expectedParams) {
         findMyWay.lookup(_req, _res)
       })
       .add('road-marking - ok', function () {
-        const d = r(_req.method, _req.url)
+        const d = r(_req.method, _req.url, undefined)
         d.data.func(_req, _res, d.params, d.data.store)
       })
       .add('findMyWay - not found', function () {
         findMyWay.lookup(_reqNotFound, _res)
       })
       .add('road-marking - not found', function () {
-        const d = r(_reqNotFound.method, _reqNotFound.url)
+        const d = r(_reqNotFound.method, _reqNotFound.url, undefined)
         d.data.func(_reqNotFound, _res, d.params, d.data.store)
       })
       .on('cycle', function (event) {
