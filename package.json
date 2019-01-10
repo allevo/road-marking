@@ -16,7 +16,7 @@
   "devDependencies": {
     "benchmark": "^2.1.4",
     "coveralls": "^3.0.2",
-    "find-my-way": "^1.15.1",
+    "find-my-way": "^1.17.1",
     "microtime": "^2.1.8",
     "pre-commit": "^1.2.2",
     "snazzy": "^8.0.0",
